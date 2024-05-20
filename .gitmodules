@@ -1,0 +1,3 @@
+[submodule "util"]
+	path = util
+	url = git@github.com-if:really-specific-software/wp-utils.git

@@ -1,36 +1,31 @@
 <?php
 /**
  * Plugin Name: Content Sync Tool
- * Plugin URI: https://infinity-scroll.io/plugins/content-sync
+ * Plugin URI: https://reallyspecific.com/plugins/content-sync
  * Description: Copy content from one site to another.
  * Version: 1.0
- * Author: Infinity Scroll
- * Author URI: https://www.infinityscroll.io
- * License: GPL2
+ * Author: Really Specific Software
+ * Author URI: https://www.reallyspecific.com
+ * License: GPL3
  *
  * Text Domain: content-sync
  * Domain Path: /languages/
  *
+ * Requires PHP: 8.1
  */
 
-namespace InfinityScroll\ContentSync;
+namespace ReallySpecific\ContentSync;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly
 }
 
+require_once __DIR__ . "/util/load.php";
+
 require_once __DIR__ . "/src/Client.php";
+require_once __DIR__ . "/src/Integration.php";
 require_once __DIR__ . "/src/Plugin.php";
 require_once __DIR__ . "/src/Settings.php";
 require_once __DIR__ . "/src/Server.php";
 
-function init() {
-	if ( ! is_admin() ) {
-		return;
-	}
-	// Load plugin text domain
-	load_plugin_textdomain( 'content-sync', false, basename( dirname( __FILE__ ) ) . '/languages' );
-	Plugin::init();
-}
-
-add_action( 'init', __NAMESPACE__ . '\init' );
+add_action( 'plugins_loaded', [ __NAMESPACE__ . '\Plugin', 'init' ] );

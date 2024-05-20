@@ -1,6 +1,6 @@
 <?php
 
-namespace InfinityScroll\ContentSync\Settings;
+namespace ReallySpecific\ContentSync\Settings;
 
 function install() {
 
@@ -23,7 +23,7 @@ function save() {
 		return;
 	}
 
-	if ( ( $_POST['page'] ?? '' ) !== 'content-sync-settings' ){
+	if ( ( $_GET['page'] ?? '' ) !== 'content-sync-settings' ){
 		return;
 	}
 
@@ -36,10 +36,16 @@ function save() {
 		'import_token' => sanitize_text_field( $_POST['source-token'] ?? '' ),
 		'export_url' => sanitize_text_field( $_POST['destination-url'] ?? '' ),
 		'export_token' => sanitize_text_field( $_POST['destination-token'] ?? '' ),
+		'export_enabled' => isset( $_POST['destination-enabled'] ) ? 'true' : '',
 	];
 
-	update_option( 'content-sync-settings', $settings );
+	update_option( 'content-sync-settings', $settings, false );
 
+}
+
+function get( ?string $key = null ) {
+	$settings = wp_cache_get( 'content-sync-settings' ) ?: get_option( 'content-sync-settings' ) ?: [];
+	return $settings[ $key ] ?? null;
 }
 
 function render() {
@@ -51,7 +57,7 @@ function render() {
 		<h2><?php _e( 'Content Sync Settings', 'content-sync' ); ?></h2>
 		<form method="post" action="admin.php?page=content-sync-settings">
 			<?php wp_nonce_field( 'content-sync-settings' ); ?>
-			<h3><?php _e( 'Import settings', 'content-sync' ); ?></h3>
+			<h3><?php _e( 'Content import settings', 'content-sync' ); ?></h3>
 			<table class="form-table">
 				<tr>
 					<th scope="row">
@@ -68,13 +74,22 @@ function render() {
 					</th>
 					<td>
 						<input type="text" name="source-token" id="source-token" value="<?php echo esc_attr( $settings['import_token'] ?? '' ); ?>" class="regular-text">
-						<p>Use either a WordPress user application password, or a global access token created on the source site.</p>
+						<p>Use either a WordPress user application password in the format <code>username:password</code>, or a global access token created on the source site.</p>
 					</td>
 				</tr>
 			</table>
 			<hr>
-			<h3><?php _e( 'Export settings', 'content-sync' ); ?></h3>
+			<h3><?php _e( 'Source server / export settings', 'content-sync' ); ?></h3>
 			<table class="form-table">
+				<tr>
+					<th scope="row">
+						<label for="destination-url"><?php _e( 'Enable export', 'content-sync' ); ?></label>
+					</th>
+					<td>
+						<input type="checkbox" <?php checked( $settings['export_enabled'] ?? '', 'true' ); ?> name="destination-enabled" id="destination-enabled">
+						<label for="destination-enabled"><?php _e( 'Enable export to other sites', 'content-sync' ); ?></label>
+					</td>
+				</tr>
 				<tr>
 					<th scope="row">
 						<label for="destination-url"><?php _e( 'Allowed websites', 'content-sync' ); ?></label>
@@ -91,13 +106,19 @@ function render() {
 						<label for="destination-token"><?php _e( 'Global Access Token', 'content-sync' ); ?></label>
 					</th>
 					<td>
-						<input type="text" name="destination-token" id="destination-token" value="<?php echo esc_attr( $settings['export_token'] ?? '' ); ?>" class="regular-text">
+						<input style="font-family:monospace" size="30" type="text" name="destination-token" id="destination-token" value="<?php echo esc_attr( $settings['export_token'] ?? '' ); ?>" class="regular-text"> <button type="button" class="button" id="refresh-access-token">Regenerate</button>
 						<p>Leave blank to only allow exports from registered users with appropriate access tokens.</p>
 					</td>
 				</tr>
 			</table>
 			<?php submit_button(); ?>
 		</form>
+		<script>
+			document.getElementById('refresh-access-token').addEventListener('click', function() {
+				var token = Array.from(Array(30), () => Math.floor(Math.random() * 36).toString(36)).join('');
+				document.getElementById('destination-token').value = token;
+			});
+		</script>
 	</div>
 	<?php
 }
