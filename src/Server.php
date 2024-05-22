@@ -87,13 +87,13 @@ class Server extends Util\Singleton {
 		$meta  = get_post_meta( $post['ID'] );
 		$terms = wp_get_object_terms( $post['ID'], get_object_taxonomies( $post['post_type'] ) );
 		$media_sizes = get_intermediate_image_sizes();
-		$media = $this->get_attached_media( $post['ID'], $media_sizes );
-		$media += $this->find_embedded_media( $post['post_content'], $media_sizes, $post['ID'] );
+		$media = $this->find_embedded_media( $post['post_content'], $media_sizes, $post['ID'] );
 		$meta_string = '';
 		foreach( $meta as $values ) {
 			$meta_string .= implode( "\n", $values ) . "\n";
 		}
 		$media += $this->find_embedded_media( $meta_string, $media_sizes, $post['ID'] );
+		$media += $this->get_attached_media( $post['ID'], $media_sizes );
 
 		return rest_ensure_response( [
 			'post' => $post,
@@ -123,7 +123,7 @@ class Server extends Util\Singleton {
 		$url = preg_quote( $url, '/' );
 		$regex = '/' . $url . '\/(([a-zA-Z0-9-_\/]+)\.(' . implode( '|', $allowed_image_filetypes ) . '))/';
 		if ( preg_match_all( $regex . 'i', $post_content, $matches ) ) {
-			foreach( $matches[1] as $index =>$url ) {
+			foreach( $matches[1] as $index => $url ) {
 				$without_postfix = preg_replace( '/-[0-9]+x[0-9]*/', '', $matches[2][$index] ) . '.' . $matches[3][$index];
 				$attachments = get_posts( [
 					'post_type'   => 'attachment',
@@ -142,7 +142,7 @@ class Server extends Util\Singleton {
 				foreach( $attachments as $attachment ) {
 					$matched[ $attachment->ID ] = [
 						'match' => $matches[0][$index],
-						'post'  => $attachment,
+						'post'  => $attachment->to_array(),
 					];
 					if ( $sizes ) {
 						$matched[ $attachment->ID ]['sizes'] = [];
@@ -189,6 +189,19 @@ class Server extends Util\Singleton {
 			}
 		}
 		return $media;
+	}
+
+	/**
+	 * Returns the URL of the WP Rest API endpoint on the source server
+	 *
+	 * @return string
+	 */
+	public static function get_export_endpoint() {
+		$source = Settings\get( 'import_url' );
+		if ( ! $source ) {
+			return false;
+		}
+		return untrailingslashit( $source ) . '/wp-json/content-sync/v1/export';
 	}
 
 }

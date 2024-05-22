@@ -35,7 +35,7 @@ function add_sync_link( $actions, $post = null ) {
 	}
 	$actions['sync'] = sprintf(
 		'<a href="%s" data-content-sync="%d">%s</a>',
-		admin_url( 'admin.php?page=content-sync-settings&post_id=' . $post->ID ),
+		admin_url( 'admin.php?page=content-sync-post&post_id=' . $post->ID ),
 		$post->ID,
 		__( 'Sync', 'content-sync' )
 	);

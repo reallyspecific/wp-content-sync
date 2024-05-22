@@ -34,7 +34,7 @@ function save() {
 	$settings = [
 		'import_url' => sanitize_text_field( $_POST['source-url'] ?? '' ),
 		'import_token' => sanitize_text_field( $_POST['source-token'] ?? '' ),
-		'export_url' => sanitize_text_field( $_POST['destination-url'] ?? '' ),
+		'export_whitelist' => sanitize_text_field( $_POST['destination-whitelist'] ?? '' ),
 		'export_token' => sanitize_text_field( $_POST['destination-token'] ?? '' ),
 		'export_enabled' => isset( $_POST['destination-enabled'] ) ? 'true' : '',
 	];
@@ -92,10 +92,10 @@ function render() {
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="destination-url"><?php _e( 'Allowed websites', 'content-sync' ); ?></label>
+						<label for="destination-whitelist"><?php _e( 'Allowed websites', 'content-sync' ); ?></label>
 					</th>
 					<td>
-						<textarea rows="4" name="destination-url" id="destination-url" value="<?php echo esc_attr( $settings['export_url'] ?? '' ); ?>" class="regular-text">
+						<textarea rows="4" name="destination-whitelist" id="destination-whitelist" value="<?php echo esc_attr( $settings['export_whitelist'] ?? '' ); ?>" class="regular-text">
 
 						</textarea>
 						<p>One per line, enter <code>*</code> to allow from all. (Not recommended.)</p>
