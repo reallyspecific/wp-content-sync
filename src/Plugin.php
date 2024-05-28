@@ -9,33 +9,46 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly
 }
 
-Util\maybe_load( 'Singleton' );
+// Util\maybe_load( 'Singleton' );
 
-class Plugin extends Util\Singleton {
+class Plugin  {
 
-	protected static $instance = null;
+	private $root_path = null;
 
-	private static $root_path = null;
+	private static $state = null;
 
-	function __construct() {
-		if ( static::is_initialized() ) {
+	private $services = [];
+
+	function __construct( $root_path = null ) {
+		if ( static::$state ) {
+			// plugin is already initialized, silently fail
 			return;
 		}
-		add_action( 'init', [ __NAMESPACE__ . '\Server', 'init' ] );
+		static::$state = $this;
+
+		$this->services['server'] = new Server();
+
 		if ( is_admin() ) {
-			load_plugin_textdomain( 'content-sync', false, basename( dirname( __FILE__ ) ) . '/languages' );
 			add_action( 'admin_menu', __NAMESPACE__ . '\Settings\install' );
 			add_action( 'init', __NAMESPACE__ . '\Integration\install' );
 		}
-		static::$root_path = dirname( __DIR__ );
+		static::$root_path = $root_path ?: dirname( __DIR__ );
 	}
 
-	public static function get_root_path() {
-		return static::$root_path;
+	public function service( $name ) {
+		return $this->services[ $name ];
 	}
 
-	public static function get_url( $relative_path = null ) {
-		return plugins_url( $relative_path, static::get_root_path() . '/content-sync.php' );
+	public static function get_service( $name ) {
+		return static::$state->service( $name );
+	}
+
+	public function get_root_path() {
+		return $this->root_path;
+	}
+
+	public function get_url( $relative_path = null ) {
+		return plugins_url( $relative_path, $this->get_root_path() . '/content-sync.php' );
 	}
 
 }

@@ -28,4 +28,9 @@ require_once __DIR__ . "/src/Plugin.php";
 require_once __DIR__ . "/src/Settings.php";
 require_once __DIR__ . "/src/Server.php";
 
-add_action( 'plugins_loaded', [ __NAMESPACE__ . '\Plugin', 'init' ] );
+function load() {
+	load_plugin_textdomain( 'content-sync', false, __DIR__ . '/languages' );
+	new Plugin( __DIR__ );
+}
+
+add_action( 'plugins_loaded', __NAMESPACE__ . '\load' );

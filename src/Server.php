@@ -9,9 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly
 }
 
-Util\maybe_load( 'Singleton' );
-
-class Server extends Util\Singleton {
+class Server {
 
 	public function __construct() {
 		if ( ! filter_var( Settings\get('export_enabled'), FILTER_VALIDATE_BOOLEAN ) ) {
