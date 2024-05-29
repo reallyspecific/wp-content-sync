@@ -1,8 +1,8 @@
 <?php
 
-namespace ReallySpecific\ContentSync\Integration;
+namespace ReallySpecific\WP_ContentSync\Integration;
 
-use ReallySpecific\ContentSync\Settings;
+use ReallySpecific\WP_ContentSync\Settings;
 
 function install() {
 

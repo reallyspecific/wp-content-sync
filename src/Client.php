@@ -1,10 +1,10 @@
 <?php
 
-namespace ReallySpecific\ContentSync\Client;
+namespace ReallySpecific\WP_ContentSync\Client;
 
-use ReallySpecific\Util;
-use ReallySpecific\ContentSync\Settings;
-use ReallySpecific\ContentSync\Server;
+use ReallySpecific\WP_Util as Util;
+use ReallySpecific\WP_ContentSync\Settings;
+use ReallySpecific\WP_ContentSync\Server;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly

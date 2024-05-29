@@ -15,9 +15,9 @@
  * Requires PHP: 8.1
  */
 
-namespace ReallySpecific\ContentSync;
-use ReallySpecific\Util;
-use ReallySpecific\Util\Plugin;
+namespace ReallySpecific\WP_ContentSync;
+use ReallySpecific\WP_Util as Util;
+use ReallySpecific\WP_Util\Plugin;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly
