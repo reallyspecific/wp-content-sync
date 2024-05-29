@@ -1,7 +1,8 @@
 <?php
 /**
  * Plugin Name: Content Sync Tool
- * Plugin URI: https://reallyspecific.com/plugins/content-sync
+ * Plugin URI: https://reallyspecific.com/software/content-sync
+ * Update URI: https://reallyspecific.com/software/content-sync/updates.json
  * Description: Copy content from one site to another.
  * Version: 1.0
  * Author: Really Specific Software
@@ -15,6 +16,8 @@
  */
 
 namespace ReallySpecific\ContentSync;
+use ReallySpecific\Util;
+use ReallySpecific\Util\Plugin;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly
@@ -28,9 +31,18 @@ require_once __DIR__ . "/src/Plugin.php";
 require_once __DIR__ . "/src/Settings.php";
 require_once __DIR__ . "/src/Server.php";
 
+Util\class_loader('Plugin');
+
 function load() {
 	load_plugin_textdomain( 'content-sync', false, __DIR__ . '/languages' );
-	new Plugin( __DIR__ );
+	$plugin = new Plugin( [
+		'slug' => 'content-sync',
+		'file' => __FILE__,
+	] );
+	$plugin->attach_service( 'init', 'server', __NAMESPACE__ . '\Server' );
+	if ( is_admin() ) {
+		$plugin->attach_service( 'init', 'client', __NAMESPACE__ . '\Client' );
+	}
 }
 
 add_action( 'plugins_loaded', __NAMESPACE__ . '\load' );

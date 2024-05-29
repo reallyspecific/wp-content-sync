@@ -14,7 +14,6 @@ function install() {
 	}
 
 	add_filter( 'page_row_actions', __NAMESPACE__ . '\add_sync_link', 10, 2 );
-	add_action( 'init', '\ReallySpecific\ContentSync\Client\install', 10 );
 
 }
 
