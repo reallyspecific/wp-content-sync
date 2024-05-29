@@ -1,12 +1,12 @@
 <?php
 /**
- * Plugin Name: Content Sync Tool
+ * Plugin Name: Content Sync
  * Plugin URI: https://reallyspecific.com/software/content-sync
  * Update URI: https://reallyspecific.com/software/content-sync/updates.json
  * Description: Copy content from one site to another.
  * Version: 1.0
  * Author: Really Specific Software
- * Author URI: https://www.reallyspecific.com
+ * Author URI: https://reallyspecific.com
  * License: GPL3
  *
  * Text Domain: content-sync
@@ -27,22 +27,28 @@ require_once __DIR__ . "/util/load.php";
 
 require_once __DIR__ . "/src/Client.php";
 require_once __DIR__ . "/src/Integration.php";
-require_once __DIR__ . "/src/Plugin.php";
-require_once __DIR__ . "/src/Settings.php";
 require_once __DIR__ . "/src/Server.php";
 
 Util\class_loader('Plugin');
 
 function load() {
-	load_plugin_textdomain( 'content-sync', false, __DIR__ . '/languages' );
 	$plugin = new Plugin( [
-		'slug' => 'content-sync',
-		'file' => __FILE__,
+		'slug'        => 'content-sync',
+		'file'        => __FILE__,
+		'i18n_domain' => 'rs-content-sync',
 	] );
-	$plugin->attach_service( 'init', 'server', __NAMESPACE__ . '\Server' );
-	if ( is_admin() ) {
-		$plugin->attach_service( 'init', 'client', __NAMESPACE__ . '\Client' );
-	}
+	$plugin->attach_service(
+		load_action:  'init',
+		service_name: 'server',
+		callback:     __NAMESPACE__ . '\Server',
+		admin_only:   true
+	);
+	$plugin->attach_service(
+		load_action:  'init',
+		service_name: 'client',
+		callback:     __NAMESPACE__ . '\Client'
+	);
+	Integration\install( $plugin );
 }
 
 add_action( 'plugins_loaded', __NAMESPACE__ . '\load' );
