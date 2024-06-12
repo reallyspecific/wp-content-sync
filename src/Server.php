@@ -11,8 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Server {
 
-	public function __construct() {
-		if ( ! filter_var( Settings\get('export_enabled'), FILTER_VALIDATE_BOOLEAN ) ) {
+	public function __construct( Util\Plugin $plugin ) {
+		if ( ! filter_var( $plugin->get_setting( key: 'export_enabled' ), FILTER_VALIDATE_BOOLEAN ) ) {
 			return;
 		}
 		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
