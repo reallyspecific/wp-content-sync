@@ -278,17 +278,5 @@ class Server {
 		return $media;
 	}
 
-	/**
-	 * Returns the URL of the WP Rest API endpoint on the source server
-	 *
-	 * @return string
-	 */
-	public static function get_export_endpoint() {
-		$source = Settings\get( 'import_url' );
-		if ( ! $source ) {
-			return false;
-		}
-		return untrailingslashit( $source ) . '/wp-json/content-sync/v1/export';
-	}
 
 }
