@@ -11,11 +11,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Server {
 
-	public function __construct( Util\Plugin $plugin ) {
+	private $plugin = null;
+
+	public function __construct( Util\Plugin &$plugin ) {
 		if ( ! filter_var( $plugin->get_setting( key: 'export_enabled' ), FILTER_VALIDATE_BOOLEAN ) ) {
 			return;
 		}
 		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
+
+		$this->plugin = &$plugin;
 	}
 
 	/**
@@ -42,6 +46,81 @@ class Server {
 		);
 	}
 
+	public function get_allowed_referrers() {
+
+		$allowed = wp_cache_get( 'allowed_referrers', $this->plugin->i18n_domain );
+		if ( false !== $allowed ) {
+			return $allowed;
+		}
+
+		$referrers = $this->plugin->get_setting( key: 'export_referrer_whitelist' ) ?: '';
+		if ( empty( trim( $referrers ) ) ) {
+			return [];
+		}
+		$referrers = array_map( 'trim', explode( "\n", $referrers ) );
+		if ( in_array( '*', $referrers, true ) ) {
+			$referrers = '*';
+		} else {
+			foreach( $referrers as $index => $referrer ) {
+				$url = parse_url( $referrer );
+				$referrers[ $index ] = $url['host'] ?? $referrer;
+			}
+		}
+
+		wp_cache_set( 'allowed_referrers', $referrers, $this->plugin->i18n_domain );
+
+		return $referrers;
+	}
+
+	/** todo: refactor the following four functions to the util library */
+	public function verify_referrer( \WP_REST_Request $request ) {
+		$allowed_hosts = $this->get_allowed_referrers();
+		if ( $allowed_hosts === '*' ) {
+			return true;
+		}
+		$referrer = $request->get_header( 'Referer' ) ?: $_SERVER['HTTP_REFERER'] ?: null;
+		if ( empty( $referrer ) ) {
+			return false;
+		}
+		$url      = parse_url( $referrer );
+		$referrer = $url['host'] ?? $referrer;
+
+		return in_array( $referrer, $allowed_hosts, true );
+	}
+
+	public function get_allowed_ips() {
+
+		$allowed = wp_cache_get( 'allowed_ips', $this->plugin->i18n_domain );
+		if ( false !== $allowed ) {
+			return $allowed;
+		}
+
+		$referrers = $this->plugin->get_setting( key: 'export_ip_whitelist' ) ?: '';
+		if ( empty( trim( $referrers ) ) ) {
+			return '*';
+		}
+		$referrers = array_map( 'trim', explode( "\n", $referrers ) );
+		if ( in_array( '*', $referrers, true ) ) {
+			$referrers = '*';
+		}
+
+		wp_cache_set( 'allowed_ips', $referrers, $this->plugin->i18n_domain );
+
+		return $referrers;
+	}
+
+	public function verify_remote_ip( \WP_REST_Request $request ) {
+		$allowed_sources = $this->get_allowed_ips();
+		if ( $allowed_sources === '*' ) {
+			return true;
+		}
+		$remote_ip = $_SERVER['REMOTE_ADDR'] ?? null;
+		if ( empty( $source_ip ) ) {
+			return false;
+		}
+		return in_array( $remote_ip, $allowed_sources, true );
+	}
+
 	/**
 	 * Check if the request is authorized using a bearer token or user application password.
 	 *
@@ -49,6 +128,16 @@ class Server {
 	 * @return bool|\WP_Error
 	 */
 	public function check_permissions( \WP_REST_Request $request ) {
+
+		if ( ! $this->verify_referrer( $request ) || ! $this->verify_remote_ip( $request ) ) {
+			return false;
+		}
+
+		if ( ! $this->verify_ip( $request ) ) {
+			return false;
+		}
+
+
 		$token = Settings\get('export_token');
 		$auth = $request->get_header('Authorization');
 		if ( $token && $auth && $auth === 'Bearer ' . $token ) {

@@ -20,6 +20,8 @@ function install( Util\Plugin $plugin ) {
 
 function add_global_settings_page( Util\Plugin $plugin ) {
 
+	$trace_ip = Util\Network\get_server_remote_ip() ?: wp_unslash( $_SERVER['SERVER_ADDR'] );
+
 	$plugin->add_new_settings(
 		menu_title: __( 'Content Sync', $plugin->i18n_domain ),
 		props:      [ 'parent' => 'tools.php' ]
@@ -67,7 +69,11 @@ function add_global_settings_page( Util\Plugin $plugin ) {
 					'description' =>
 						__( 'Leave blank to allow from all. (Not recommended.)', $plugin->i18n_domain ) . 
 						'<br>' .
-						__( '', $plugin->i18n_domain ),
+						// translators: %s: The IP address of this server
+						sprintf(
+							__( 'This server appears as %s', $plugin->i18n_domain ),
+							$trace_ip
+						),
 				],[
 					'name'        => 'export_token',
 					'label'       => __( 'Access Token', $plugin->i18n_domain ),
