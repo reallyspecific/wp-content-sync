@@ -52,7 +52,8 @@
 		}
 
 		const stageImport = ( settings, content ) => {
-			return new Promise( ( resolve, reject ) => {
+			console.log( settings, content );
+			/*return new Promise( ( resolve, reject ) => {
 				const fetchURL = new URL( syncPostForm.dataset.restLocal );
 				const body = settings;
 				body.content = content;
@@ -76,7 +77,7 @@
 					console.error( error );
 					reject( error );
 				} );
-			} );
+			} );*/
 		}
 
 		document.addEventListener( 'content-sync|download', downloadPost );

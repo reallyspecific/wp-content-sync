@@ -41,7 +41,6 @@ function load() {
 		load_action:  'init',
 		service_name: 'server',
 		callback:     __NAMESPACE__ . '\Server',
-		admin_only:   true
 	);
 	$plugin->attach_service(
 		load_action:  'init',

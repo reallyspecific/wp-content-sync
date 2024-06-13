@@ -115,7 +115,7 @@ class Server {
 			return true;
 		}
 		$remote_ip = $_SERVER['REMOTE_ADDR'] ?? null;
-		if ( empty( $source_ip ) ) {
+		if ( empty( $remote_ip ) ) {
 			return false;
 		}
 		return in_array( $remote_ip, $allowed_sources, true );
@@ -133,19 +133,14 @@ class Server {
 			return false;
 		}
 
-		if ( ! $this->verify_ip( $request ) ) {
-			return false;
-		}
-
-
-		$token = Settings\get('export_token');
-		$auth = $request->get_header('Authorization');
+		$token = $this->plugin->get_setting( key: 'export_token' );
+		$auth = $request->get_header('authorization');
 		if ( $token && $auth && $auth === 'Bearer ' . $token ) {
 			return true;
 		}
 
-		$user     = $request->get_header('X-WP-User');
-		$password = $request->get_header('X-WP-Password');
+		$auth = $request->get_header('x-wp-authorization');
+		list( $user, $password ) = array_merge( explode( ':', base64_decode( $auth ) ?? '', 2 ), [ null, null ] );
 		if ( $user && $password && $user = wp_authenticate_application_password( null, $user, $password ) ) {
 			if ( $user instanceof \WP_User && user_can( $user, 'manage_options' ) ) {
 				return true;
@@ -229,6 +224,7 @@ class Server {
 				foreach( $attachments as $attachment ) {
 					$matched[ $attachment->ID ] = [
 						'match' => $matches[0][$index],
+						'full'  => wp_get_attachment_image_src( $attachment->ID, 'full' ),
 						'post'  => $attachment->to_array(),
 					];
 					if ( $sizes ) {
@@ -264,6 +260,7 @@ class Server {
 		foreach( $attachments as $attachment ) {
 			$media[ $attachment->ID ] = [
 				'post' => $attachment,
+				'full'  => wp_get_attachment_image_src( $attachment->ID, 'full' ),
 			];
 			if ( $sizes ) {
 				$media[ $attachment->ID ]['sizes'] = [];
