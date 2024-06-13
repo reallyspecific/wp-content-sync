@@ -17,7 +17,7 @@ class Client {
 	private $hook = null;
 
 	// todo: change edit_posts to sync_posts
-	public const REQUIRED_CAPABILITY = 'edit_posts';
+	public const REQUIRED_CAPABILITY = 'edit_others_posts';
 
 	public function __construct( Util\Plugin $plugin ) {
 		if ( is_admin() ) {
@@ -41,17 +41,17 @@ class Client {
 			'/import',
 			[
 				'methods' => 'POST',
-				'callback' => __NAMESPACE__ . 'import',
-				'permission_callback' => __NAMESPACE__ . 'check_import_permissions',
+				'callback' => [ $this, 'import' ],
+				'permission_callback' => [ $this, 'check_import_permissions' ],
 			]
 		);
 	}
 
 	function admin_menu() {
 		$this->hook = add_submenu_page(
-			null,
-			__( 'Sync Post', 'content-sync' ),
-			__( 'Sync Post', 'content-sync' ),
+			'options.php',
+			__( 'Sync Post', $this->plugin->i18n_domain ),
+			__( 'Sync Post', $this->plugin->i18n_domain ),
 			static::REQUIRED_CAPABILITY,
 			'content-sync-post',
 			[ $this, 'page' ],
@@ -85,14 +85,16 @@ class Client {
 		$auth = $this->plugin->get_setting( key: 'import_token' );
 		$endpoint = $this->get_remote_endpoint();
 
+		$settings = get_post_meta( $post_id, '_content_sync_import_settings', true ) ?: [];
+
 		?>
 		<div id="page">
 			<h1 class="wp-heading-inline">
-				<?php _e( 'Synchronize Post', 'content-sync' ); ?>
+				<?php _e( 'Synchronize Post', $this->plugin->i18n_domain ); ?>
 			</h1>
 			<hr class="wp-header-end">
-			<p>Copying: <?php echo $post->post_title; ?> 
-				<strong>ID: <?php echo $post->ID; ?></strong>
+			<p>Copying: <?php echo $post->post_title; ?>;
+				<strong>ID: <?php echo $post->ID; ?></strong>;
 				<strong>slug: <?php echo $post->post_name; ?></strong>
 			</p>
 
@@ -106,67 +108,67 @@ class Client {
 				data-rest-source="<?php echo esc_url( $endpoint ); ?>"
 				data-rest-auth="<?php echo esc_attr( $auth ); ?>">
 				<input type="hidden" name="post_id" value="<?php echo $post->ID; ?>">
-				<?php wp_nonce_field( 'content-sync-post' ); ?>
+				<?php wp_nonce_field( 'content-sync-post', '_content_sync_nonce' ); ?>
 				<table class="form-table">
 					<tbody>
 						<tr>
 							<th>
-								<label for="post_id_name"><?php _e( 'Post ID or slug', 'content-sync' ); ?></label>
+								<label for="post_id_name"><?php _e( 'Post ID or slug', $this->plugin->i18n_domain ); ?></label>
 							</th>
 							<td>
-								<input type="text" id="post_id_name" name="post_id_name" value="<?php echo $post->ID; ?>">
+								<input type="text" id="post_id_name" name="post_id_name" value="<?php echo $settings['post_id_name'] ?? $post->ID; ?>">
 							</td>
 						</tr>
-						<tr>
+						<tr <?php if ( ! wp_revisions_enabled( $post ) ) echo 'class="is-style-disabled"'; ?>>
 							<th>
-								<label for="create_revision"><?php _e( 'Create revision', 'content-sync' ); ?></label>
+								<label for="create_revision"><?php _e( 'Create revision', $this->plugin->i18n_domain ); ?></label>
 							</th>
 							<td>
 								<input type="checkbox" id="create_revision" name="create_revision" <?php
 									if ( wp_revisions_enabled( $post ) ) {
-										echo 'checked';
+										echo ( $settings['create_revision'] ?? true ) ? 'checked' : '';
 									} else {
 										echo 'disabled';
 									}
 								?>>
-								<label for="create_revision">If checked, the existing post will be saved as a revision</label>
+								<label for="create_revision"><?php _e( 'If checked, the existing post will be saved as a revision', $this->plugin->i18n_domain ); ?></label>
 							</td>
 						</tr>
 						<tr>
 							<th>
-								<label for="import_media"><?php _e( 'Import new media', 'content-sync' ); ?></label>
+								<label for="import_media"><?php _e( 'Import new media', $this->plugin->i18n_domain ); ?></label>
 							</th>
 							<td>
-								<input type="checkbox" id="import_media" name="import_media" checked>
-								<label><?php _e( 'Download images attached to the source post into the local media library', 'content-sync' ); ?></label>
+								<input type="checkbox" id="import_media" name="import_media" <?php checked( $settings['import_media'] ?? true ); ?>>
+								<label><?php _e( 'Download images attached to the source post into the local media library.', $this->plugin->i18n_domain ); ?></label>
 							</td>
 						</tr>
 						<tr>
 							<th>
-								<label for="replace_media"><?php _e( 'Replace existing media', 'content-sync' ); ?></label>
+								<label for="replace_media"><?php _e( 'Replace existing media', $this->plugin->i18n_domain ); ?></label>
 							</th>
 							<td>
-								<input type="checkbox" id="replace_media" name="replace_media">
-								<label><?php _e( 'When matching file paths are found, replace the local media with the source media', 'content-sync' ); ?></label>
+								<input type="checkbox" id="replace_media" name="replace_media" <?php checked( $settings['replace_media'] ?? false ); ?>>
+								<label><?php _e( 'When matching file paths are found, replace the local media with the source media', $this->plugin->i18n_domain ); ?></label>
 							</td>
 						</tr>
 						<tr>
 							<th>
-								<label for="replace_meta"><?php _e( 'Replace meta', 'content-sync' ); ?></label>
+								<label for="replace_meta"><?php _e( 'Replace meta', $this->plugin->i18n_domain ); ?></label>
 							</th>
 							<td>
-								<input type="checkbox" id="replace_meta" name="replace_meta" checked><label for="replace_meta">Destroy meta keys that do not exist on the source post</label>
-								<p><em>If unchecked, existing meta keys will still be replaced with values from the source post, but keys that do not exist on the source post will be left in tact.</em></p>
+								<input type="checkbox" id="replace_meta" name="replace_meta" <?php checked( $settings['replace_meta'] ?? true ); ?>><label for="replace_meta"><?php _e( 'Destroy meta keys that do not exist on the source post', $this->plugin->i18n_domain ); ?></label>
+								<p><em><?php _e( 'If unchecked, existing meta keys will still be replaced with values from the source post, but keys that do not exist on the source post will be left in tact.', $this->plugin->i18n_domain ); ?></em></p>
 							</td>
 						</tr>
-						<tr>
+						<tr class="is-style-disabled">
 							<th>
-								<label for="import_terms"><?php _e( 'Import taxonomy relationships', 'content-sync' ); ?></label>
+								<label for="import_terms"><?php _e( 'Import taxonomy relationships', $this->plugin->i18n_domain ); ?></label>
 							</th>
 							<td>
-								<input type="checkbox" id="import_terms" name="import_terms" checked>
-								<label for="import_terms"><?php _e( 'Import terms from the source post', 'content-sync' ); ?></label>
-								<p><em>If checked, the existing post relationships will be destroyed and replaced with the terms found on the source post. Terms that do not exist locally will be created.</em></p>
+								<input type="checkbox" id="import_terms" name="import_terms" disabled>
+								<label for="import_terms"><?php _e( 'Import terms from the source post', $this->plugin->i18n_domain ); ?></label>
+								<p><em><?php _e( 'If checked, the existing post relationships will be destroyed and replaced with the terms found on the source post. Terms that do not exist locally will be created.', $this->plugin->i18n_domain ); ?></em></p>
 							</td>
 						</tr>
 					</tbody>
@@ -175,23 +177,30 @@ class Client {
 					<input data-action="download" type="button" class="button button-primary" value="Download">
 					<input data-action="preview" type="button" class="button button-primary" value="Preview" disabled>
 					<input data-action="edit" type="button" class="button button-primary" value="Edit draft" disabled>
-					<input data-action="publish" type="button" class="button button-primary" value="Publish" disabled>
+					<input data-action="publish" type="button" class="button button-primary" value="Publish" disabled><br>
+					<label for="save-for-later"><input name="save_settings" type="checkbox" id="save-for-later"> <?php _e( 'Save import settings for the next time (saves on \'Download\')', $this->plugin->i18n_domain ); ?></label>
 				</p>
 			</form>
-			<script src="<?php echo $this->plugin->get_url( 'assets/js/sync.js' ); ?>"></s></script>
+			<script src="<?php echo $this->plugin->get_url( 'assets/js/sync.js' ); ?>"></script>
+			<link rel="stylesheet" type="text/css" href="<?php echo $this->plugin->get_url( 'assets/css/sync.css' ); ?>"></link>
 			<?php endif; ?>
+
+			<div class="content-sync-status-area">
+				<div id="cs-status-text" class="content-sync-status-area__status-text"></div>
+				<div id="cs-images" class="content-sync-status-area__images"></div>
+			</div>
 		</div>
-		
+
 		<?php
 
 	}
 
-	function check_import_permissions() {
-		return current_user_can( 'manage_options' );
+	public function check_import_permissions() {
+		return current_user_can( self::REQUIRED_CAPABILITY );
 	}
 
 
-	function import( \WP_REST_Request $request ) {
+	public function import( \WP_REST_Request $request ) {
 		$post = $request->get_param( 'post_id' );
 		if ( ! $post ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
@@ -209,24 +218,48 @@ class Client {
 		$this_url = untrailingslashit( get_bloginfo( 'url' ) );
 
 		$content = json_decode( $request->get_param( 'content' ), ARRAY_A );
-		if ( ! $content ) {
+		if ( ! $content || empty( $content['post'] ) ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'No content to publish' ] );
 		}
-		$preview_post = wp_create_post_autosave( [
-			'ID'           => $post['ID'],
-			'post_content' => $content['post']['post_content'],
-			'post_title'   => $content['post']['post_title'],
-			'post_name'    => $content['post']['post_name'],
-			'post_excerpt' => $content['post']['post_excerpt'],
-		] );
-		$replace_meta = filter_var( $request->get_param( 'replace_meta' ), FILTER_VALIDATE_BOOLEAN );
+
+		$new_post = $content['post'];
+		$new_post['post_ID'] = $post['ID'];
+		unset( $new_post['ID'] );
+		unset( $new_post['post_parent'] );
+		unset( $new_post['guid'] );
+
+		if ( $new_post['post_type'] !== $post['post_type'] && empty( $request->get_param( 'ignore_post_type' ) ) ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => 'The post type of the new post does not match the source content. If this is intentional, you can enable the \'Ignore post type\' setting.' ] );
+		}
+
+		$import_settings = [];
+		$import_settings['post_id_name'] = $request->get_param( 'post_id_name' );
+		$import_settings['create_revision'] = filter_var( $request->get_param( 'create_revision' ), FILTER_VALIDATE_BOOLEAN );
+		$import_settings['import_media'] = filter_var( $request->get_param( 'import_media' ), FILTER_VALIDATE_BOOLEAN );
+		$import_settings['replace_media'] = filter_var( $request->get_param( 'replace_media' ), FILTER_VALIDATE_BOOLEAN );
+		$import_settings['replace_meta'] = filter_var( $request->get_param( 'replace_meta' ), FILTER_VALIDATE_BOOLEAN );
+		$import_settings['import_terms'] = filter_var( $request->get_param( 'import_terms' ), FILTER_VALIDATE_BOOLEAN );
+
+		// ok time to move forward
+		if ( $request->get_param( 'save_settings' ) ) {
+			update_post_meta( $post['ID'], '_content_sync_import_settings', $import_settings );
+		}
+		
+		$import_settings = apply_filters( 'content_sync_import_settings', $import_settings, $request, $post );
+
+		include_once ABSPATH . "/wp-admin/includes/post.php";
+
+		$preview_post = \wp_create_post_autosave( $new_post );
+		if ( is_wp_error( $preview_post ) ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => $preview_post->get_error_message() ] );
+		}
 		$original_meta = get_post_meta( $post['ID'] );
 
 		foreach( $content['meta'] as $key => $values ) {
 			$new_values = [];
 			foreach( $values as $value ) {
 				// find/replace source url with local url
-				$json = json_encode( $value );
+				$json = json_decode( $value );
 				$is_json = json_last_error() === JSON_ERROR_NONE;
 				if ( ! $is_json ) {
 					$value = maybe_unserialize( $value );
@@ -245,12 +278,28 @@ class Client {
 			}
 			$meta[ $key ] = $new_values;
 		}
+		if ( $request->get_param( 'save_settings' ) ) {
+			$meta['_content_sync_import_settings'] = $import_settings;
+		}
 		// loop through original meta and replace or remove as needed
 		foreach( $original_meta as $key => $values ) {
+			if ( $import_settings['replace_meta'] || isset( $meta[ $key ] ) ) {
+				delete_metadata( 'post', $preview_post, $key );
+			}
+		}
+		foreach( $meta as $key => $values ) {
+			foreach( $values as $value ) {
+				add_metadata( 'post', $preview_post, $key, $value );
+			}
+		}
+
+		if ( $import_settings['import_terms'] ) {
 
 		}
 
-		$preview_url = get_permalink( $preview_post );
+		$preview_url = get_preview_post_link( $post['ID'] );
+		$preview_url = add_query_arg( 'preview_id', $preview_post, $preview_url );
+		$preview_url = add_query_arg( 'preview_nonce', wp_create_nonce( 'post_preview_' . $preview_post ), $preview_url );
 
 		return [ 'status' => 'ok', 'preview_url' => $preview_url, 'preview_id' => $preview_post ];
 	}
@@ -274,7 +323,7 @@ class Client {
 			'<a href="%s" data-content-sync="%d">%s</a>',
 			admin_url( 'admin.php?page=content-sync-post&post_id=' . $post->ID ),
 			$post->ID,
-			__( 'Sync', 'content-sync' )
+			__( 'Sync', $this->plugin->i18n_domain )
 		);
 		return $actions;
 	}

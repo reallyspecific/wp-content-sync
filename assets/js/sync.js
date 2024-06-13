@@ -22,10 +22,12 @@
 		} );
 
 		const downloadPost = e => {
-			const formData = new FormData( syncPostForm );
+			const formData = new URLSearchParams( new FormData( syncPostForm ) );
 
 			const fetchURL = new URL( syncPostForm.dataset.restSource );
 			fetchURL.searchParams.set( 'post', formData.get( 'post_id_name' ) );
+
+			setImportStatus( 'Downloading content from source server...' );
 
 			fetch( fetchURL, {
 				method: 'GET',
@@ -38,8 +40,18 @@
 				}
 				return response.json();
 			} ).then( data => {
+				if ( ! data.success ) {
+					throw new Error( data.message );
+				}
 				window.sessionStorage.setItem( 'rs_content_buffer', JSON.stringify( data ) );
-				return stageImport( syncPostForm, data );
+				formData.set( 'content', JSON.stringify( data ) );
+
+				setImportStatus( 'Saving content as new post draft' );
+				return stageImport( formData, data );
+			} ).then( ( previewData ) => {
+				// todo: honor import_media setting
+				
+
 			} ).catch( error => {
 				console.error( error );
 				// display error on form
@@ -51,33 +63,54 @@
 			} )
 		}
 
-		const stageImport = ( settings, content ) => {
-			console.log( settings, content );
-			/*return new Promise( ( resolve, reject ) => {
+		const stageImport = ( content, postdata ) => {
+			console.log( 'creating temporary post', content );
+			
+			return new Promise( ( resolve, reject ) => {
 				const fetchURL = new URL( syncPostForm.dataset.restLocal );
-				const body = settings;
-				body.content = content;
 				fetch( fetchURL, {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/x-www-form-urlencoded',
 						'X-WP-Nonce': syncPostForm.dataset.restNonce
 					},
-					body: ( new URLSearchParams( body ) ).toString()
+					body: content
 				} ).then( response => {
 					if ( ! response.ok ) {
 						throw new Error( response.statusText );
 					}
 					return response.json();
-				} ).then( data => {
-					console.log( data );
+				} ).then( previewData => {
+					console.log( 'preview post created, ready to import media', previewData );
+					setImportStatus( 'Importing media from source server' );
 
-					resolve();
+					const previewImages = document.querySelector( '#cs-images' );
+
+					for( const mediaId in postdata.media ) {
+						const mediadata = postdata.media[ mediaId ];
+						const newImg = document.createElement( 'img' );
+						const newFigure = document.createElement( 'figure' );
+						newImg.src = mediadata.full[0];
+						newFigure.classList.add('is-state-loading');
+
+						newFigure.appendChild( newImg );
+						previewImages.appendChild( newFigure );
+					}
+
+					resolve( previewData );
 				} ).catch( error => {
 					console.error( error );
 					reject( error );
 				} );
-			} );*/
+			} );
+		}
+
+		const setImportStatus = ( status ) => {
+			const statusText = document.querySelector( '#cs-status-text' );
+			if ( statusText ) {
+				statusText.innerText = 'Status: ' + status;
+			}
+			statusText.parentElement.classList.add( 'is-state-running' );
 		}
 
 		document.addEventListener( 'content-sync|download', downloadPost );
