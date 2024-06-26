@@ -4,7 +4,7 @@
  * Plugin URI: https://reallyspecific.com/software/content-sync
  * Update URI: https://reallyspecific.com/software/content-sync/updates.json
  * Description: Copy content from one site to another.
- * Version: 1.0
+ * Version: 0.1-dev
  * Author: Really Specific Software
  * Author URI: https://reallyspecific.com
  * License: GPL3
