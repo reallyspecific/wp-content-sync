@@ -44,6 +44,15 @@ class Server {
 				]
 			]
 		);
+		register_rest_route(
+			'content-sync/v1',
+			'/export/image/(?P<id>\d+)',
+			[
+				'methods' => 'GET',
+				'callback' => [ $this, 'export_image_files' ],
+				'permission_callback' => [ $this, 'check_permissions' ],
+			]
+		);
 	}
 
 	public function get_allowed_referrers() {
@@ -140,7 +149,10 @@ class Server {
 		}
 
 		$auth = $request->get_header('x-wp-authorization');
-		list( $user, $password ) = array_merge( explode( ':', base64_decode( $auth ) ?? '', 2 ), [ null, null ] );
+		if ( $auth ) {
+			$auth = base64_decode( $auth );
+		}
+		list( $user, $password ) = array_merge( explode( ':', $auth, 2 ), [ null, null ] );
 		if ( $user && $password && $user = wp_authenticate_application_password( null, $user, $password ) ) {
 			if ( $user instanceof \WP_User && user_can( $user, 'manage_options' ) ) {
 				return true;
@@ -154,7 +166,7 @@ class Server {
 
 		$post = $request->get_param( 'post' );
 		if ( ! $post ) {
-			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found on source server' ] );
 		}
 		if ( is_numeric( $post ) ) {
 			$post = get_post( absint( $post ), ARRAY_A );
@@ -163,7 +175,7 @@ class Server {
 			$post = Util\get_post_by_slug( $post );
 		}
 		if ( ! $post ) {
-			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found on source server' ] );
 		}
 		
 		$meta  = get_post_meta( $post['ID'] );
@@ -224,6 +236,7 @@ class Server {
 				foreach( $attachments as $attachment ) {
 					$matched[ $attachment->ID ] = [
 						'match' => $matches[0][$index],
+						'path'  => get_post_meta( $attachment->ID, '_wp_attached_file', true ),
 						'full'  => wp_get_attachment_image_src( $attachment->ID, 'full' ),
 						'post'  => $attachment->to_array(),
 					];
@@ -232,7 +245,7 @@ class Server {
 						foreach( $sizes as $size ) {
 							$src = wp_get_attachment_image_src( $attachment->ID, $size );;
 							if ( $src && ! in_array( $src[0], $matched[ $attachment->ID ]['sizes'], true ) ) {
-								$matched[ $attachment->ID ]['sizes'][] = $src[0];
+								$matched[ $attachment->ID ]['sizes'][$size] = $src;
 							}
 						}
 					}
@@ -260,6 +273,7 @@ class Server {
 		foreach( $attachments as $attachment ) {
 			$media[ $attachment->ID ] = [
 				'post' => $attachment,
+				'path' => get_post_meta( $attachment->ID, '_wp_attached_file', true ),
 				'full'  => wp_get_attachment_image_src( $attachment->ID, 'full' ),
 			];
 			if ( $sizes ) {
@@ -267,7 +281,7 @@ class Server {
 				foreach( $sizes as $size ) {
 					$src = wp_get_attachment_image_src( $attachment->ID, $size );;
 					if ( $src && ! in_array( $src[0], $media[ $attachment->ID ]['sizes'], true ) ) {
-						$media[ $attachment->ID ]['sizes'][] = $src[0];
+						$media[ $attachment->ID ]['sizes'][$size] = $src;
 					}
 				}
 			}
@@ -275,5 +289,65 @@ class Server {
 		return $media;
 	}
 
+	public function export_image_files( \WP_REST_Request $request ) {
 
+		$post = $request->get_param( 'id' );
+		if ( ! $post ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Image not found on source server' ] );
+		}
+		if ( is_numeric( $post ) ) {
+			$post = get_post( absint( $post ), ARRAY_A );
+		}
+		if ( ! $post || $post['post_type'] !== 'attachment' ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found on source server' ] );
+		}
+		
+		$media_sizes = get_intermediate_image_sizes();
+		$media       = [];
+		$full_path   = get_attached_file( $post['ID'] );
+		$file_dir    = dirname( $full_path );
+		$details     = wp_get_attachment_image_src( $post['ID'] );
+		try {
+			$contents = @file_get_contents( $full_path );
+		} catch( \Exception $e ) {
+			return rest_ensure_response( [ 'success' => false,
+				'message' => 'There was an error retrieving the attachment source file.',
+				'error'   => ( $this->plugin->debug_mode() ? $e->getMessage() : truee )
+			] );
+		}
+		$media['full'] = [
+			'data'   => base64_encode( $contents ),
+			'url'    => $details[0],
+			'width'  => $details[1],
+			'height' => $details[2],
+			'type'   => mime_content_type( $full_path ),
+		];
+		if ( $media['full']['type'] === 'image/svg+xml' ) {
+			return rest_ensure_response( [ 'success' => true, 'media' => $media ] );
+		}
+
+		foreach( $media_sizes as $size ) {
+			$details = wp_get_attachment_image_src( $post['ID'], $size );
+			if ( ! $details ) {
+				continue;
+			}
+			$file_name = basename( $details[0] );
+			$file_path = $file_dir . '/' . $file_name;
+			try {
+				$contents = @file_get_contents( $file_path );
+			} catch( \Exception $e ) {
+				$media[ $size ] = 'ERROR' . ( $this->plugin->debug_mode() ? ' ' . $e->getMessage() : '' );
+				continue;
+			}
+			$media[ $size ] = [
+				'data'   => base64_encode( $contents ),
+				'url'    => $details[0],
+				'width'  => $details[1],
+				'height' => $details[2],
+				'type'   => mime_content_type( $file_path ),
+			];
+		}
+
+		return rest_ensure_response( [ 'success' => true, 'media' => $media ] );
+	}
 }
