@@ -45,6 +45,15 @@ class Client {
 				'permission_callback' => [ $this, 'check_import_permissions' ],
 			]
 		);
+		register_rest_route(
+			'content-sync/v1',
+			'/import/image',
+			[
+				'methods' => 'POST',
+				'callback' => [ $this, 'import_image' ],
+				'permission_callback' => [ $this, 'check_import_permissions' ],
+			]
+		);
 	}
 
 	function admin_menu() {
@@ -106,7 +115,8 @@ class Client {
 				data-rest-local="<?php echo esc_url( rest_url( 'content-sync/v1/import' ) ); ?>"
 				data-rest-nonce="<?php echo esc_attr( wp_create_nonce( 'wp_rest' ) ); ?>"
 				data-rest-source="<?php echo esc_url( $endpoint ); ?>"
-				data-rest-auth="<?php echo esc_attr( $auth ); ?>">
+				data-rest-auth="<?php echo esc_attr( $auth ); ?>"
+				data-post-id="<?php echo esc_attr( $post->ID ); ?>">
 				<input type="hidden" name="post_id" value="<?php echo $post->ID; ?>">
 				<?php wp_nonce_field( 'content-sync-post', '_content_sync_nonce' ); ?>
 				<table class="form-table">
@@ -176,8 +186,8 @@ class Client {
 				<p class="submit">
 					<input data-action="download" type="button" class="button button-primary" value="Download">
 					<input data-action="preview" type="button" class="button button-primary" value="Preview" disabled>
-					<input data-action="edit" type="button" class="button button-primary" value="Edit draft" disabled>
-					<input data-action="publish" type="button" class="button button-primary" value="Publish" disabled><br>
+					<input data-action="edit" type="button" class="button button-primary" value="Edit draft/Publish" disabled>
+					<!--input data-action="publish" type="button" class="button button-primary" value="Publish" disabled --><br>
 					<label for="save-for-later"><input name="save_settings" type="checkbox" id="save-for-later"> <?php _e( 'Save import settings for the next time (saves on \'Download\')', $this->plugin->i18n_domain ); ?></label>
 				</p>
 			</form>
@@ -215,12 +225,14 @@ class Client {
 		if ( ! $remote_url ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'No import URL set' ] );
 		}
-		$this_url = untrailingslashit( get_bloginfo( 'url' ) );
+		$this_url = str_replace( [ 'http://', 'https://' ], '//', untrailingslashit( get_bloginfo( 'url' ) ) );
 
 		$content = json_decode( $request->get_param( 'content' ), ARRAY_A );
 		if ( ! $content || empty( $content['post'] ) ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'No content to publish' ] );
 		}
+
+		$images = json_decode( $request->get_param( 'images' ), ARRAY_A );
 
 		$new_post = $content['post'];
 		$new_post['post_ID'] = $post['ID'];
@@ -244,8 +256,17 @@ class Client {
 		if ( $request->get_param( 'save_settings' ) ) {
 			update_post_meta( $post['ID'], '_content_sync_import_settings', $import_settings );
 		}
-		
 		$import_settings = apply_filters( 'content_sync_import_settings', $import_settings, $request, $post );
+
+		foreach( $images as $image ) {
+			if ( ! empty( $image['replaceWith'] ) ) {
+				$replacements[] = [ 'find' => $image['match'], 'replace' => $image['replaceWith'], ];
+			}
+		}
+		$replacements[] = [ 'find' => '//' . $remote_url, 'replace' => $this_url, ];
+		$replacements   = apply_filters( 'content_sync_image_replacements', $replacements, $request, $post );
+
+		$new_post['post_content'] = $this->recursive_find_replace( $new_post['post_content'], $replacements );
 
 		include_once ABSPATH . "/wp-admin/includes/post.php";
 
@@ -253,44 +274,12 @@ class Client {
 		if ( is_wp_error( $preview_post ) ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => $preview_post->get_error_message() ] );
 		}
-		$original_meta = get_post_meta( $post['ID'] );
 
-		foreach( $content['meta'] as $key => $values ) {
-			$new_values = [];
-			foreach( $values as $value ) {
-				// find/replace source url with local url
-				$json = json_decode( $value );
-				$is_json = json_last_error() === JSON_ERROR_NONE;
-				if ( ! $is_json ) {
-					$value = maybe_unserialize( $value );
-				}
-				if ( is_array( $value ) ) {
-					array_walk_recursive( $value, function( &$node ) use ( $this_url, $remote_url ) {
-						$node = str_replace( $remote_url, $this_url, $node );
-					} );
-				} else {
-					$value = str_replace( $remote_url, $this_url, $value );
-				}
-				if ( $is_json ) {
-					$value = json_encode( $json, true );
-				}
-				$new_values[] = $value;
-			}
-			$meta[ $key ] = $new_values;
-		}
+		$original_meta = get_post_meta( $post['ID'] );
+		$this->import_meta( $preview_post, $original_meta, $content['meta'], $replacements, $import_settings['replace_meta'] );
+		
 		if ( $request->get_param( 'save_settings' ) ) {
-			$meta['_content_sync_import_settings'] = $import_settings;
-		}
-		// loop through original meta and replace or remove as needed
-		foreach( $original_meta as $key => $values ) {
-			if ( $import_settings['replace_meta'] || isset( $meta[ $key ] ) ) {
-				delete_metadata( 'post', $preview_post, $key );
-			}
-		}
-		foreach( $meta as $key => $values ) {
-			foreach( $values as $value ) {
-				add_metadata( 'post', $preview_post, $key, $value );
-			}
+			update_post_meta( $preview_post, '_content_sync_import_settings', $import_settings );
 		}
 
 		if ( $import_settings['import_terms'] ) {
@@ -301,7 +290,141 @@ class Client {
 		$preview_url = add_query_arg( 'preview_id', $preview_post, $preview_url );
 		$preview_url = add_query_arg( 'preview_nonce', wp_create_nonce( 'post_preview_' . $preview_post ), $preview_url );
 
-		return [ 'status' => 'ok', 'preview_url' => $preview_url, 'preview_id' => $preview_post ];
+		return [ 
+			'status' => 'ok',
+			'preview_url' => $preview_url,
+			'preview_id' => $preview_post,
+			'edit_url' => get_edit_post_link( $preview_post ),
+		];
+	}
+
+	private function import_meta( $post_id, $old_meta, $new_meta, $replacements, $replace_meta = true ) {
+
+		$meta = [];
+		foreach( $new_meta as $key => $values ) {
+			$new_values = [];
+			foreach( $values as $value ) {
+				$new_values[] = $this->recursive_find_replace( $value, $replacements );
+			}
+			$meta[ $key ] = $new_values;
+		}
+		// loop through original meta and replace or remove as needed
+		foreach( $old_meta as $key => $values ) {
+			if ( $replace_meta || isset( $meta[ $key ] ) ) {
+				delete_metadata( 'post', $post_id, $key );
+			}
+		}
+		foreach( $meta as $key => $values ) {
+			foreach( $values as $value ) {
+				add_metadata( 'post', $post_id, $key, $value );
+			}
+		}
+
+	}
+
+	public function import_image( \WP_REST_Request $request ) {
+		/*$post = $request->get_param( 'preview_id' );
+		if ( ! $post ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Post ID not sent' ] );
+		}
+		$post = get_post( absint( $post ), ARRAY_A, 'raw' );
+		if ( ! $post ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Post preview not found' ] );
+		}*/
+
+		$post   = $request->get_param( 'post' );
+		$files  = $request->get_param( 'media' );
+		$params = $request->get_param( 'params' );
+		$parent = $params['attachmentParent'] ?? 0;
+
+		if ( ! empty( $post['path'] ) ) {
+			$existing_media = get_posts( [
+				'post_type'   => 'attachment',
+				'numberposts' => -1,
+				'meta_query' => [
+					[
+						'key' => '_wp_attached_file',
+						'value' => $post['path']
+					]
+				]
+			] );
+		}
+
+		$rel_path = trailingslashit( dirname( $post['path'] ) );
+
+		if ( empty( $existing_media ) ) {
+			// insert attachment
+			$new_post = [
+				'post_date'         => $post['post']['post_date'],
+				'post_date_gmt'     => $post['post']['post_date_gmt'],
+				'post_modified'     => $post['post']['post_modified'],
+				'post_modified_gmt' => $post['post']['post_modified_gmt'],
+				'post_title'        => $post['post']['post_title'],
+				'post_name'         => $post['post']['post_name'],
+				'post_content'      => $post['post']['post_content'],
+				'post_status'       => $post['post']['post_status'],
+				'post_type'         => 'attachment',
+				'post_parent'       => $parent,
+			];
+			$attachment_id = wp_insert_attachment( $new_post, false, $parent );
+			update_post_meta( $attachment_id, '_wp_attached_file', $post['path'] );
+		}
+		$upload_dir = wp_upload_dir();
+		if ( ! is_dir( $upload_dir['basedir'] ) ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Upload directory not found' ] );
+		}
+
+		$upload_path = trailingslashit( dirname( trailingslashit( $upload_dir['basedir'] ) . $post['path'] ) );
+		$path_exists = Util\Filesystem\recursive_mk_dir( $upload_path );
+		if ( ! $path_exists ) {
+			return rest_ensure_response( [ 'success' => false, 'message' => 'Could not create upload directory.' ] );
+		}
+
+		// todo: ok now upload the files sent
+		$uploaded = [];
+		foreach( $files as $thumbnail_size => $file ) {
+			$filename  = basename( $file['url'] );
+			$decoded   = base64_decode( $file['data'] );
+			$new_path  = $upload_path . $filename;
+			$preexists = (bool) file_exists( $new_path );
+			$uploaded[$thumbnail_size] = [
+				'filename' => $filename,
+				'replaced' => $preexists && ( $params['replaceExisting'] ?? false ),
+				'relpath'  => $rel_path . $filename,
+				'absurl'   => trailingslashit( $upload_dir['baseurl'] ) . $rel_path . $filename,
+			];
+			if ( ! $preexists || ( $params['replaceExisting'] ?? false ) ) {
+				if ( file_put_contents( $new_path, $decoded ) ) {
+					$uploaded[$thumbnail_size]['status'] = 'ok';
+				} else {
+					$uploaded[$thumbnail_size]['status'] = 'failed';
+				}
+			}
+			
+		}
+
+		return [ 'status' => 'ok', 'uploaded' => $uploaded ];
+	}
+
+	private function recursive_find_replace( $value, $replacements ) {
+		$json = json_decode( $value );
+		$is_json = json_last_error() === JSON_ERROR_NONE;
+		if ( ! $is_json ) {
+			$value = maybe_unserialize( $value );
+		}
+		foreach( $replacements as $match ) {
+			if ( is_array( $value ) ) {
+				array_walk_recursive( $value, function( &$node ) use ( $match ) {
+					$node = str_replace( $match['find'], $match['replace'], $node );
+				} );
+			} else {
+				$value = str_replace( $match['find'], $match['replace'], $value );
+			}
+		}
+		if ( $is_json ) {
+			$value = json_encode( $json, true );
+		}
+		return $value;
 	}
 
 	/**
