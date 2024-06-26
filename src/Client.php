@@ -225,7 +225,8 @@ class Client {
 		if ( ! $remote_url ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'No import URL set' ] );
 		}
-		$this_url = str_replace( [ 'http://', 'https://' ], '//', untrailingslashit( get_bloginfo( 'url' ) ) );
+		$remote_url = str_replace( [ 'http://', 'https://' ], '//', $remote_url );
+		$this_url   = str_replace( [ 'http://', 'https://' ], '//', untrailingslashit( get_bloginfo( 'url' ) ) );
 
 		$content = json_decode( $request->get_param( 'content' ), ARRAY_A );
 		if ( ! $content || empty( $content['post'] ) ) {
@@ -263,7 +264,7 @@ class Client {
 				$replacements[] = [ 'find' => $image['match'], 'replace' => $image['replaceWith'], ];
 			}
 		}
-		$replacements[] = [ 'find' => '//' . $remote_url, 'replace' => $this_url, ];
+		$replacements[] = [ 'find' => $remote_url, 'replace' => $this_url, ];
 		$replacements   = apply_filters( 'content_sync_image_replacements', $replacements, $request, $post );
 
 		$new_post['post_content'] = $this->recursive_find_replace( $new_post['post_content'], $replacements );
