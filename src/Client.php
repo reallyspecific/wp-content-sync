@@ -164,6 +164,15 @@ class Client {
 						</tr>
 						<tr>
 							<th>
+								<label for="replace_media"><?php _e( 'Match media objects', $this->plugin->i18n_domain ); ?></label>
+							</th>
+							<td>
+								<input type="checkbox" id="replace_media_ids" name="replace_media_ids" <?php checked( $settings['replace_media_ids'] ?? false ); ?>>
+								<label><?php _e( 'Post IDs of imported media will replace source IDs from imported page. (Use with caution!)', $this->plugin->i18n_domain ); ?></label>
+							</td>
+						</tr>
+						<tr>
+							<th>
 								<label for="replace_meta"><?php _e( 'Replace meta', $this->plugin->i18n_domain ); ?></label>
 							</th>
 							<td>
@@ -221,12 +230,12 @@ class Client {
 		if ( ! $post ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
 		}
-		$remote_url = untrailingslashit( $this->plugin->get_setting( key: 'import_url' ) ?: $request->get_param('source_url') );
+		$remote_url = $this->plugin->get_setting( key: 'import_url' ) ?: $request->get_param('source_url');
 		if ( ! $remote_url ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'No import URL set' ] );
 		}
-		$remote_url = str_replace( [ 'http://', 'https://' ], '//', $remote_url );
-		$this_url   = str_replace( [ 'http://', 'https://' ], '//', untrailingslashit( get_bloginfo( 'url' ) ) );
+		$remote_url = $this->normalize_url( $this->plugin->get_setting( key: 'import_url' ) ?: $request->get_param('source_url') );
+		$this_url   = $this->normalize_url( get_bloginfo( 'url' ) );
 
 		$content = json_decode( $request->get_param( 'content' ), ARRAY_A );
 		if ( ! $content || empty( $content['post'] ) ) {
@@ -276,8 +285,7 @@ class Client {
 			return rest_ensure_response( [ 'success' => false, 'message' => $preview_post->get_error_message() ] );
 		}
 
-		$original_meta = get_post_meta( $post['ID'] );
-		$this->import_meta( $preview_post, $original_meta, $content['meta'], $replacements, $import_settings['replace_meta'] );
+		$this->import_meta( $preview_post, $content['meta'], $replacements, $import_settings['replace_meta'] );
 		
 		if ( $request->get_param( 'save_settings' ) ) {
 			update_post_meta( $preview_post, '_content_sync_import_settings', $import_settings );
@@ -299,7 +307,13 @@ class Client {
 		];
 	}
 
-	private function import_meta( $post_id, $old_meta, $new_meta, $replacements, $replace_meta = true ) {
+	private function import_meta( $post_id, $new_meta, $replacements, $replace_meta = true ) {
+		
+		if ( empty( $new_meta ) ) {
+			return;
+		}
+
+		$old_meta = get_post_meta( $post_id );
 
 		$meta = [];
 		foreach( $new_meta as $key => $values ) {
@@ -336,7 +350,12 @@ class Client {
 		$post   = $request->get_param( 'post' );
 		$files  = $request->get_param( 'media' );
 		$params = $request->get_param( 'params' );
-		$parent = $params['attachmentParent'] ?? 0;
+
+		$parent           = $params['attachmentParent'] ?? 0;
+		$replace_existing = $params['replaceExisting'] ?? false;
+
+		$remote_url = $this->normalize_url( $this->plugin->get_setting( key: 'import_url' ) ?: $request->get_param('source_url') );
+		$this_url   = $this->normalize_url( get_bloginfo( 'url' ) );
 
 		if ( ! empty( $post['path'] ) ) {
 			$existing_media = get_posts( [
@@ -364,12 +383,21 @@ class Client {
 				'post_name'         => $post['post']['post_name'],
 				'post_content'      => $post['post']['post_content'],
 				'post_status'       => $post['post']['post_status'],
+				'post_mime_type'    => $post['post']['post_mime_type'],
 				'post_type'         => 'attachment',
 				'post_parent'       => $parent,
 			];
 			$attachment_id = wp_insert_attachment( $new_post, false, $parent );
 			update_post_meta( $attachment_id, '_wp_attached_file', $post['path'] );
+		} else {
+			$attachment_id = $existing_media[0]->ID;
 		}
+
+		if ( empty( $existing_media ) || $replace_existing ) {
+			$replacements = $remote_url ? [ 'find' => $remote_url, 'replace' => $this_url, ] : [];
+			$this->import_meta( $attachment_id, $post['post']['meta'] ?? [], $replacements, false );
+		}
+
 		$upload_dir = wp_upload_dir();
 		if ( ! is_dir( $upload_dir['basedir'] ) ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'Upload directory not found' ] );
@@ -390,11 +418,11 @@ class Client {
 			$preexists = (bool) file_exists( $new_path );
 			$uploaded[$thumbnail_size] = [
 				'filename' => $filename,
-				'replaced' => $preexists && ( $params['replaceExisting'] ?? false ),
+				'replaced' => $preexists && $replace_existing,
 				'relpath'  => $rel_path . $filename,
 				'absurl'   => trailingslashit( $upload_dir['baseurl'] ) . $rel_path . $filename,
 			];
-			if ( ! $preexists || ( $params['replaceExisting'] ?? false ) ) {
+			if ( ! $preexists || $replace_existing ) {
 				if ( file_put_contents( $new_path, $decoded ) ) {
 					$uploaded[$thumbnail_size]['status'] = 'ok';
 				} else {
@@ -428,6 +456,17 @@ class Client {
 		return $value;
 	}
 
+	private function normalize_url( $url ) {
+
+		$url = str_replace( [ 'http://', 'https://' ], '//', $url );
+		if ( substr( $url , 0, 2 ) !== '//' ) {
+			$url = '//' . $url;
+		}
+		$url = untrailingslashit( $url );
+		return $url;
+
+	}
+
 	/**
 	 * Adds a 'sync' link to the list of post row actions if the post type is allowed.
 	 * Implemented as a filter of page_row_actions
@@ -436,7 +475,7 @@ class Client {
 	 * @param \WP_Post $post The post object.
 	 * @return array The modified list of post row actions.
 	 */
-	function add_sync_link( $actions, $post = null ) {
+	public function add_sync_link( $actions, $post = null ) {
 		if ( ! $post ) {
 			return $actions;
 		}

@@ -238,6 +238,7 @@ class Server {
 						'match' => $matches[0][$index],
 						'path'  => get_post_meta( $attachment->ID, '_wp_attached_file', true ),
 						'full'  => wp_get_attachment_image_src( $attachment->ID, 'full' ),
+						'meta'  => get_post_meta( $attachment->ID ),
 						'post'  => $attachment->to_array(),
 					];
 					if ( $sizes ) {
@@ -349,6 +350,6 @@ class Server {
 			];
 		}
 
-		return rest_ensure_response( [ 'success' => true, 'media' => $media ] );
+		return rest_ensure_response( [ 'success' => true, 'media' => $media, 'meta' => get_post_meta( $post['ID'] ) ] );
 	}
 }
