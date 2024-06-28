@@ -274,7 +274,8 @@ class Server {
 			$media[ $attachment->ID ] = [
 				'post' => $attachment,
 				'path' => get_post_meta( $attachment->ID, '_wp_attached_file', true ),
-				'full'  => wp_get_attachment_image_src( $attachment->ID, 'full' ),
+				'meta' => get_post_meta( $attachment->ID ),
+				'full' => wp_get_attachment_image_src( $attachment->ID, 'full' ),
 			];
 			if ( $sizes ) {
 				$media[ $attachment->ID ]['sizes'] = [];

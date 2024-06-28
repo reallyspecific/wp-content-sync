@@ -48,7 +48,7 @@
 				return response.json();
 			} ).then( content => {
 				if ( ! content.success ) {
-					throw new Error( data.message );
+					throw new Error( content.message );
 				}
 				collectedContent = content;
 				window.sessionStorage.setItem( 'rs_content_buffer', JSON.stringify( content ) );
