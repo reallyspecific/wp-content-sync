@@ -189,7 +189,9 @@
 					mediaWrapper.classList.add( 'is-state-done' );
 					if ( response.status === 'ok' ) {
 						const returnData = {
-							uploaded: response.uploaded
+							uploaded:   response.uploaded,
+							sourcePost: data.post.ID,
+							localPost:  response.attachmentId
 						}
 						if ( data.match ) {
 							returnData.match = data.match;

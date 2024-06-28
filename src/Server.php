@@ -314,7 +314,7 @@ class Server {
 		} catch( \Exception $e ) {
 			return rest_ensure_response( [ 'success' => false,
 				'message' => 'There was an error retrieving the attachment source file.',
-				'error'   => ( $this->plugin->debug_mode() ? $e->getMessage() : truee )
+				'error'   => ( $this->plugin->debug_mode() ? $e->getMessage() : true )
 			] );
 		}
 		$media['full'] = [

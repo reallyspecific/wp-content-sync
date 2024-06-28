@@ -27,6 +27,9 @@ class Client {
 			add_action( 'rest_api_init', [ $this, 'register_routes' ] );
 			add_filter( 'page_row_actions', [ $this, 'add_sync_link' ], 10, 2 );
 		}
+
+		add_action( 'content_sync_image_replacements', [ static::class, 'add_image_id_replacements' ], 10, 3 );
+
 		$this->plugin = &$plugin;
 	}
 
@@ -225,7 +228,7 @@ class Client {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
 		}
 		if ( is_numeric( $post ) ) {
-			$post = get_post( absint( $post ), ARRAY_A );
+			$post = get_post( absint( $post ), true );
 		}
 		if ( ! $post ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
@@ -237,12 +240,12 @@ class Client {
 		$remote_url = $this->normalize_url( $this->plugin->get_setting( key: 'import_url' ) ?: $request->get_param('source_url') );
 		$this_url   = $this->normalize_url( get_bloginfo( 'url' ) );
 
-		$content = json_decode( $request->get_param( 'content' ), ARRAY_A );
+		$content = json_decode( $request->get_param( 'content' ), true );
 		if ( ! $content || empty( $content['post'] ) ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'No content to publish' ] );
 		}
 
-		$images = json_decode( $request->get_param( 'images' ), ARRAY_A );
+		$images = json_decode( $request->get_param( 'images' ), true );
 
 		$new_post = $content['post'];
 		$new_post['post_ID'] = $post['ID'];
@@ -276,7 +279,8 @@ class Client {
 		$replacements[] = [ 'find' => $remote_url, 'replace' => $this_url, ];
 		$replacements   = apply_filters( 'content_sync_image_replacements', $replacements, $request, $post );
 
-		$new_post['post_content'] = $this->recursive_find_replace( $new_post['post_content'], $replacements );
+		// wp_create_post_autosave runs wp_unslash on the content and messes up stuff in gutenberg meta. wp_slash rescues us.
+		$new_post['post_content'] = wp_slash( $this->recursive_find_replace( $new_post['post_content'], $replacements ) );
 
 		include_once ABSPATH . "/wp-admin/includes/post.php";
 
@@ -394,8 +398,8 @@ class Client {
 		}
 
 		if ( empty( $existing_media ) || $replace_existing ) {
-			$replacements = $remote_url ? [ 'find' => $remote_url, 'replace' => $this_url, ] : [];
-			$this->import_meta( $attachment_id, $post['post']['meta'] ?? [], $replacements, false );
+			$replacements = $remote_url ? [[ 'find' => $remote_url, 'replace' => $this_url, ]] : [];
+			$this->import_meta( $attachment_id, $post['meta'] ?? [], $replacements, false );
 		}
 
 		$upload_dir = wp_upload_dir();
@@ -432,7 +436,7 @@ class Client {
 			
 		}
 
-		return [ 'status' => 'ok', 'uploaded' => $uploaded ];
+		return [ 'status' => 'ok', 'uploaded' => $uploaded, 'attachmentId' => $attachment_id ];
 	}
 
 	private function recursive_find_replace( $value, $replacements ) {
@@ -489,6 +493,55 @@ class Client {
 			__( 'Sync', $this->plugin->i18n_domain )
 		);
 		return $actions;
+	}
+
+	public static function add_image_id_replacements( array $replacements, \WP_REST_Request $request ) {
+
+		$images = json_decode( $request->get_param( 'images' ), true );
+		if ( ! $images ) {
+			return $replacements;
+		}
+		foreach( $images as $image ) {
+			$find    = $image['sourcePost'] ?? null;
+			$replace = $image['localPost'] ?? null;
+			if ( ! $find || ! $replace ) {
+				continue;
+			}
+			$replacements[] = [
+				'find'    => "wp-image-$find ",
+				'replace' => "wp-image-$replace ",
+			];
+			$replacements[] = [
+				'find'    => "wp-image-$find\"",
+				'replace' => "wp-image-$replace\"",
+			];
+			$replacements[] = [
+				'find'    => "\"id\":$find,",
+				'replace' => "\"id\":$replace,",
+			];
+			$replacements[] = [
+				'find'    => "\"id\":$find}",
+				'replace' => "\"id\":$replace}",
+			];
+			$replacements[] = [
+				'find'    => "\"id\":\"$find\"",
+				'replace' => "\"id\":\"$replace\"",
+			];
+			$replacements[] = [
+				'find'    => "\"image\":$find,",
+				'replace' => "\"image\":$replace,",
+			];
+			$replacements[] = [
+				'find'    => "\"image\":$find}",
+				'replace' => "\"image\":$replace}",
+			];
+			$replacements[] = [
+				'find'    => "\"image\":\"$find\"",
+				'replace' => "\"image\":\"$replace\"",
+			];
+		}
+		return $replacements;
+
 	}
 
 }
