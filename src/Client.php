@@ -228,7 +228,7 @@ class Client {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
 		}
 		if ( is_numeric( $post ) ) {
-			$post = get_post( absint( $post ), true );
+			$post = get_post( absint( $post ), ARRAY_A );
 		}
 		if ( ! $post ) {
 			return rest_ensure_response( [ 'success' => false, 'message' => 'Post not found' ] );
